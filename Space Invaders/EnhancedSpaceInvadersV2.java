@@ -27,16 +27,13 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
     private boolean moveLeft, moveRight;
     private ArrayList<Rectangle> playerBullets;
     private ArrayList<Rectangle> enemyBullets;
-    private ArrayList<Rectangle> enemies;
+    private ArrayList<Enemy> enemies; // Use Enemy objects instead of Rectangles
     private ArrayList<Shield> shields;
     private int enemyDirection = 1; // 1 for right, -1 for left
-    private int enemySpeed = 1;
     private Random random;
 
-    private Image playerImage, enemyImage, shieldImage;
-    @SuppressWarnings("unused")
-    private boolean shieldActive = false; // Power-up for shield
-    private boolean fasterBullets = false; // Power-up for faster bullets
+    private Image playerImage, shieldImage;
+    private Image[] enemyImages; // Array for different enemy images
 
     public EnhancedSpaceInvadersV2() {
         setFocusable(true);
@@ -61,8 +58,13 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
 
     private void loadImages() {
         playerImage = new ImageIcon("spaceship.png").getImage();
-        enemyImage = new ImageIcon("alien.png").getImage();
         shieldImage = new ImageIcon("shield.png").getImage();
+
+        // Load enemy images
+        enemyImages = new Image[3];
+        enemyImages[0] = new ImageIcon("alien1.png").getImage();
+        enemyImages[1] = new ImageIcon("alien2.png").getImage();
+        enemyImages[2] = new ImageIcon("alien3.png").getImage();
     }
 
     private void initGame() {
@@ -77,12 +79,13 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
         lives = INITIAL_LIVES;
         random = new Random();
 
-        // Initialize enemies
+        // Initialize enemies with different types
         for (int row = 0; row < ENEMY_ROWS; row++) {
             for (int col = 0; col < ENEMY_COLUMNS; col++) {
                 int x = 50 + col * (ENEMY_WIDTH + 20);
                 int y = 50 + row * (ENEMY_HEIGHT + 10);
-                enemies.add(new Rectangle(x, y, ENEMY_WIDTH, ENEMY_HEIGHT));
+                int type = row % 3; // Cycle through enemy types
+                enemies.add(new Enemy(x, y, ENEMY_WIDTH, ENEMY_HEIGHT, type));
             }
         }
 
@@ -114,8 +117,7 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
     }
 
     private void shootBullet() {
-        int bulletSpeed = fasterBullets ? 15 : 10;
-        playerBullets.add(new Rectangle(playerX + PLAYER_WIDTH / 2 - BULLET_WIDTH / 2, playerY, BULLET_WIDTH, bulletSpeed));
+        playerBullets.add(new Rectangle(playerX + PLAYER_WIDTH / 2 - BULLET_WIDTH / 2, playerY, BULLET_WIDTH, BULLET_HEIGHT));
     }
 
     @Override
@@ -153,24 +155,24 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
     private void updateEnemies() {
         boolean changeDirection = false;
 
-        for (Rectangle enemy : enemies) {
-            enemy.x += enemySpeed * enemyDirection;
-            if (enemy.x <= 0 || enemy.x + ENEMY_WIDTH >= PANEL_WIDTH) {
+        for (Enemy enemy : enemies) {
+            enemy.x += enemy.speed * enemyDirection;
+            if (enemy.x <= 0 || enemy.x + enemy.width >= PANEL_WIDTH) {
                 changeDirection = true;
             }
         }
 
         if (changeDirection) {
             enemyDirection *= -1;
-            for (Rectangle enemy : enemies) {
+            for (Enemy enemy : enemies) {
                 enemy.y += 20;
             }
         }
 
         // Enemies randomly shoot bullets
         if (random.nextInt(50) == 0 && !enemies.isEmpty()) {
-            Rectangle shooter = enemies.get(random.nextInt(enemies.size()));
-            enemyBullets.add(new Rectangle(shooter.x + ENEMY_WIDTH / 2 - BULLET_WIDTH / 2, shooter.y + ENEMY_HEIGHT, BULLET_WIDTH, BULLET_HEIGHT));
+            Enemy shooter = enemies.get(random.nextInt(enemies.size()));
+            enemyBullets.add(new Rectangle(shooter.x + shooter.width / 2 - BULLET_WIDTH / 2, shooter.y + shooter.height, BULLET_WIDTH, BULLET_HEIGHT));
         }
     }
 
@@ -180,15 +182,18 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
 
     private void checkCollisions() {
         ArrayList<Rectangle> bulletsToRemove = new ArrayList<>();
-        ArrayList<Rectangle> enemiesToRemove = new ArrayList<>();
+        ArrayList<Enemy> enemiesToRemove = new ArrayList<>();
 
         // Player bullets vs enemies
         for (Rectangle bullet : playerBullets) {
-            for (Rectangle enemy : enemies) {
-                if (bullet.intersects(enemy)) {
+            for (Enemy enemy : enemies) {
+                if (bullet.intersects(enemy.getBounds())) {
                     bulletsToRemove.add(bullet);
-                    enemiesToRemove.add(enemy);
-                    score += 100;
+                    enemy.health--;
+                    if (enemy.health <= 0) {
+                        enemiesToRemove.add(enemy);
+                        score += enemy.scoreValue;
+                    }
                 }
             }
         }
@@ -220,7 +225,6 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
 
         // Check if all enemies are destroyed
         if (enemies.isEmpty()) {
-            enemySpeed++;
             initGame(); // Start a new level
         }
     }
@@ -251,8 +255,8 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
         }
 
         // Draw enemies
-        for (Rectangle enemy : enemies) {
-            g.drawImage(enemyImage, enemy.x, enemy.y, ENEMY_WIDTH, ENEMY_HEIGHT, this);
+        for (Enemy enemy : enemies) {
+            g.drawImage(enemyImages[enemy.type], enemy.x, enemy.y, enemy.width, enemy.height, this);
         }
 
         // Draw shields
@@ -265,24 +269,45 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
         g.setFont(new Font("Arial", Font.BOLD, 16));
         g.drawString("Score: " + score, 10, 20);
         g.drawString("Lives: " + lives, PANEL_WIDTH - 100, 20);
-        g.drawString("Level: " + level, PANEL_WIDTH / 2 - 50, 20);
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("Enhanced Space Invaders V2");
-            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.setResizable(false);
+    // Enemy class
+    class Enemy {
+        int x, y, width, height, type, health, speed, scoreValue;
 
-            EnhancedSpaceInvadersV2 gamePanel = new EnhancedSpaceInvadersV2();
-            frame.add(gamePanel);
-            frame.pack();
-            frame.setLocationRelativeTo(null);
-            frame.setVisible(true);
-        });
+        Enemy(int x, int y, int width, int height, int type) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.type = type;
+
+            // Assign properties based on type
+            switch (type) {
+                case 0 -> { // Type 0: Weak enemy
+                    this.health = 1;
+                    this.speed = 1;
+                    this.scoreValue = 100;
+                }
+                case 1 -> { // Type 1: Medium enemy
+                    this.health = 2;
+                    this.speed = 2;
+                    this.scoreValue = 200;
+                }
+                case 2 -> { // Type 2: Strong enemy
+                    this.health = 3;
+                    this.speed = 1;
+                    this.scoreValue = 300;
+                }
+            }
+        }
+
+        Rectangle getBounds() {
+            return new Rectangle(x, y, width, height);
+        }
     }
 
-    // Helper class for shields
+    // Shield class remains unchanged
     class Shield {
         int x, y, width, height, hits;
 
@@ -298,5 +323,18 @@ public class EnhancedSpaceInvadersV2 extends JPanel implements ActionListener {
             return new Rectangle(x, y, width, height);
         }
     }
-}
 
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("Enhanced Space Invaders V2");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setResizable(false);
+
+            EnhancedSpaceInvadersV2 gamePanel = new EnhancedSpaceInvadersV2();
+            frame.add(gamePanel);
+            frame.pack();
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+        });
+    }
+}
